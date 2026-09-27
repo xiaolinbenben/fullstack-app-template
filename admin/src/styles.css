@@ -1,0 +1,55 @@
+body {
+  margin: 0;
+  min-width: 320px;
+  background: #f5f7fa;
+}
+
+.header-title {
+  color: #0f172a;
+  font-weight: 600;
+}
+
+.admin-content {
+  min-height: calc(100vh - 56px);
+  padding: 32px;
+}
+
+.overview-page {
+  max-width: 1120px;
+  margin: 0 auto;
+}
+
+.overview-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+.overview-heading h2 {
+  margin: 8px 0;
+}
+
+.eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+}
+
+.status-card {
+  max-width: 720px;
+}
+
+.status-alert {
+  margin-top: 20px;
+}
+
+@media (max-width: 640px) {
+  .admin-content {
+    padding: 20px;
+  }
+
+  .overview-heading {
+    flex-direction: column;
+  }
+}

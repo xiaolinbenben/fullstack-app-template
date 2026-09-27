@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+
+      - name: Test Go server
+        run: make test
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: |
+            web/pnpm-lock.yaml
+            admin/pnpm-lock.yaml
+
+      - name: Install web dependencies
+        run: make web-install
+
+      - name: Install admin dependencies
+        run: make admin-install
+
+      - name: Build frontends and server
+        run: make build
+
+      - name: Build Docker image
+        run: docker build -t fullstack-app-template:ci .

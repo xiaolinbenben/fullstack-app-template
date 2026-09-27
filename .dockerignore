@@ -1,0 +1,9 @@
+.git
+.github
+**/node_modules
+deploy/.env
+server/web/dist/public
+server/web/dist/admin
+server/bin
+**/*.tsbuildinfo
+.DS_Store
