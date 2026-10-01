@@ -3,25 +3,37 @@ package httpapi
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"testing/fstest"
 
 	"fullstack-app-template/server/internal/config"
+	"fullstack-app-template/server/internal/database"
 )
 
-func testHandler() http.Handler {
+func testHandler(t *testing.T) http.Handler {
+	t.Helper()
+	db, cleanup, err := database.OpenIsolated(os.Getenv("DATABASE_URL"))
+	if err != nil {
+		t.Fatalf("打开测试库失败: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := cleanup(); err != nil {
+			t.Errorf("清理测试库失败: %v", err)
+		}
+	})
 	webFS := fstest.MapFS{
 		"public/index.html":    &fstest.MapFile{Data: []byte("<html>public</html>")},
 		"public/assets/app.js": &fstest.MapFile{Data: []byte("console.log('app')")},
 		"admin/index.html":     &fstest.MapFile{Data: []byte("<html>admin</html>")},
 	}
-	return New(config.Config{Addr: ":8000"}, webFS)
+	return New(config.Config{Addr: ":8000", EncryptionKey: "test-key"}, db, webFS)
 }
 
 func TestHealthz(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/healthz", nil)
-	testHandler().ServeHTTP(recorder, request)
+	testHandler(t).ServeHTTP(recorder, request)
 
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("healthz status = %d, want %d", recorder.Code, http.StatusOK)
@@ -50,7 +62,7 @@ func TestFrontendFallbacks(t *testing.T) {
 		t.Run(test.path, func(t *testing.T) {
 			recorder := httptest.NewRecorder()
 			request := httptest.NewRequest(http.MethodGet, test.path, nil)
-			testHandler().ServeHTTP(recorder, request)
+			testHandler(t).ServeHTTP(recorder, request)
 			if recorder.Code != http.StatusOK {
 				t.Fatalf("status = %d", recorder.Code)
 			}
@@ -64,7 +76,7 @@ func TestFrontendFallbacks(t *testing.T) {
 func TestUnknownAPI(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/api/unknown", nil)
-	testHandler().ServeHTTP(recorder, request)
+	testHandler(t).ServeHTTP(recorder, request)
 
 	if recorder.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusNotFound)
@@ -77,7 +89,7 @@ func TestUnknownAPI(t *testing.T) {
 func TestHealthzRejectsUnsupportedMethod(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, "/healthz", nil)
-	testHandler().ServeHTTP(recorder, request)
+	testHandler(t).ServeHTTP(recorder, request)
 
 	if recorder.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusMethodNotAllowed)

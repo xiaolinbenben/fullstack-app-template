@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"fullstack-app-template/server/internal/config"
+	"fullstack-app-template/server/internal/database"
 	"fullstack-app-template/server/internal/httpapi"
 	webassets "fullstack-app-template/server/web"
 )
@@ -27,9 +28,23 @@ func main() {
 		log.Fatalf("读取前端资源失败: %v", err)
 	}
 
+	db, err := database.Open(cfg.DatabaseURL)
+	if err != nil {
+		log.Fatalf("连接数据库失败: %v", err)
+	}
+	defer func() {
+		if err := database.Close(db); err != nil {
+			log.Printf("关闭数据库失败: %v", err)
+		}
+	}()
+	if err := database.Migrate(db); err != nil {
+		log.Fatalf("迁移数据库失败: %v", err)
+	}
+	log.Printf("数据库已连接")
+
 	server := &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           httpapi.New(cfg, webFS),
+		Handler:           httpapi.New(cfg, db, webFS),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

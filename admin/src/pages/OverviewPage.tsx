@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { CheckCircleOutlined, ReloadOutlined, WarningOutlined } from "@ant-design/icons";
 import { Alert, Button, Card, Space, Tag, Typography } from "antd";
-import { fetchHealth } from "../lib/api";
+import { fetchHealth, fetchWoodfish } from "../lib/api";
 
-export default function OverviewPage() {
+export default function OverviewPage({ username }: { username: string }) {
   const [state, setState] = useState<"loading" | "online" | "offline">("loading");
   const [message, setMessage] = useState("");
+  const [count, setCount] = useState<number | null>(null);
+  const [countError, setCountError] = useState("");
 
   const refresh = useCallback(async () => {
     setState("loading");
@@ -16,6 +18,13 @@ export default function OverviewPage() {
     } catch (error) {
       setState("offline");
       setMessage(error instanceof Error ? error.message : "服务不可用");
+    }
+    try {
+      const woodfish = await fetchWoodfish();
+      setCount(woodfish.data.count);
+      setCountError("");
+    } catch (error) {
+      setCountError(error instanceof Error ? error.message : "木鱼次数暂时读不到");
     }
   }, []);
 
@@ -29,7 +38,7 @@ export default function OverviewPage() {
         <div>
           <Typography.Text className="eyebrow">WORKSPACE / OVERVIEW</Typography.Text>
           <Typography.Title level={2}>项目概览</Typography.Title>
-          <Typography.Paragraph type="secondary">管理端结构已经准备好，业务模块可以从这里开始扩展。</Typography.Paragraph>
+          <Typography.Paragraph type="secondary">当前登录 {username}。木鱼次数和首页读的是同一条数据库记录。</Typography.Paragraph>
         </div>
         <Button icon={<ReloadOutlined />} onClick={() => void refresh()} loading={state === "loading"}>刷新状态</Button>
       </div>
@@ -40,6 +49,14 @@ export default function OverviewPage() {
           <Typography.Text type="secondary">GET /healthz</Typography.Text>
         </Space>
         {message && <Alert className="status-alert" type="warning" showIcon message={message} />}
+      </Card>
+
+      <Card className="status-card woodfish-card" title="木鱼">
+        <Space direction="vertical" size={4}>
+          <Typography.Title level={2} className="woodfish-count">{count === null ? "—" : count}</Typography.Title>
+          <Typography.Text type="secondary">GET /api/woodfish</Typography.Text>
+        </Space>
+        {countError && <Alert className="status-alert" type="warning" showIcon message={countError} />}
       </Card>
     </div>
   );

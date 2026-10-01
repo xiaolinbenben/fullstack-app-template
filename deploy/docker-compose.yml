@@ -1,19 +1,37 @@
 name: fullstack-app-template
 
 services:
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      # PostgreSQL 18 的数据目录在 /var/lib/postgresql。
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
   app:
     image: ghcr.io/xiaolinbenben/fullstack-app-template:latest
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
     ports:
       - "127.0.0.1:3000:3000"
-    environment:
-      DATABASE_URL: ${DATABASE_URL}
-      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/healthz"]
       interval: 10s
       timeout: 3s
       retries: 3
 
-# 数据库、缓存、对象存储由具体项目根据实际需求自行加入。
-# 本模板不预设基础设施镜像、持久化方式或数据卷。
+volumes:
+  postgres-data:

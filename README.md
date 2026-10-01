@@ -6,11 +6,11 @@
 
 - 公共前端：React + Vite + TypeScript + shadcn/ui
 - 管理端：React + Vite + Ant Design + `@ant-design/pro-components`
-- 后端：Go + Gin
+- 后端：Go + Gin + GORM
 - 部署：单个 Go 应用镜像，由 1Panel 负责域名、HTTPS 证书和反向代理
 - CI/CD：GitHub Actions 构建并推送 GHCR 镜像，通过 SSH 更新 Compose
 
-模板只包含健康检查、静态资源托管和工程规范，不预设 SQLite、PostgreSQL、Redis、MinIO 或其他持久化方案。
+开发时前后端分开运行，部署时用 `go:embed` 合成一个二进制和一个应用镜像。数据库使用 PostgreSQL，和 Go 应用写在同一个 `deploy/docker-compose.yml` 里。缓存和对象存储不预设。
 
 ## 项目结构
 
@@ -19,6 +19,9 @@ web/                    # 公共前端，访问 /
 admin/                  # 管理端，访问 /admin/
 server/cmd/server/      # Go 程序入口
 server/internal/config/ # 环境变量配置
+server/internal/database/ # GORM 连接和迁移
+server/internal/model/  # GORM 模型
+server/internal/store/  # 查询
 server/internal/httpapi/ # Gin 路由和静态资源
 server/internal/middleware/
 server/internal/response/
@@ -35,11 +38,15 @@ corepack enable
 make install
 ```
 
-启动 Go 服务：
+先启动 PostgreSQL，再启动 Go 服务：
 
 ```bash
+cp deploy/.env.example deploy/.env
+docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d postgres
 make server-dev
 ```
+
+`make server-dev` 只把 `DATABASE_URL` 和 `ENCRYPTION_KEY` 传给 Go 进程。连接串里的主机名 `postgres` 会改成 `127.0.0.1`。
 
 在另外两个终端启动前端：
 
@@ -59,11 +66,18 @@ make admin-dev
 
 ## API 规范
 
-当前只提供：
+当前提供：
 
 ```text
-GET /healthz
+GET  /healthz
+GET  /api/woodfish
+POST /api/woodfish
+POST /api/admin/login
+GET  /api/admin/session
+POST /api/admin/logout
 ```
+
+`GET /api/woodfish` 返回木鱼被敲过的总次数，`POST /api/woodfish` 把次数加一。次数存在 PostgreSQL 里。参观管理端的账号和密码写死为 `admin` / `admin123`，首页上能看到，不能在页面里修改。
 
 响应统一为：
 
@@ -93,18 +107,21 @@ deploy/.env.example
 cp deploy/.env.example deploy/.env
 ```
 
-`deploy/.env` 被 Git 忽略。当前只保留数据库连接串和加密密钥：
+`deploy/.env` 被 Git 忽略。PostgreSQL 容器和应用容器都读取这个文件：
 
 ```dotenv
-DATABASE_URL=replace-with-database-connection-string
+POSTGRES_USER=app
+POSTGRES_PASSWORD=replace-with-a-long-random-password
+POSTGRES_DB=app
+DATABASE_URL=postgres://app:replace-with-a-long-random-password@postgres:5432/app?sslmode=disable
 ENCRYPTION_KEY=replace-with-a-long-random-key
 ```
 
-当前后端只读取这两项配置并保留给后续基础设施接入使用，暂不建立数据库连接或实现加密逻辑。端口和镜像地址固定在代码与 Compose 中，不通过环境变量覆盖。
+用户名和数据库名固定为 `app`。密码只使用字母、数字和连字符，并与 `DATABASE_URL` 中的密码相同。服务启动时用 GORM 连接 PostgreSQL，并执行 `AutoMigrate`。端口和镜像地址固定在代码与 Compose 中，不通过环境变量覆盖。`ENCRYPTION_KEY` 仍只读入配置，加密逻辑由具体业务实现。
 
 ## Docker Compose
 
-本模板的 Compose 只编排 Go 应用，不启动任何数据库或基础服务：
+`deploy/docker-compose.yml` 同时启动 PostgreSQL 和应用。两个服务都用 `env_file` 读取 `deploy/.env`。PostgreSQL 只绑定在 `127.0.0.1:5432`。应用容器按 `DATABASE_URL` 连接主机名 `postgres`。
 
 ```bash
 cp deploy/.env.example deploy/.env
@@ -130,11 +147,11 @@ docker compose \
 
 1. 在服务器安装 Docker、Compose 插件和 1Panel。
 2. 将 `deploy/docker-compose.yml` 和 `deploy/.env.example` 上传到 `/opt/<app-name>/deploy/`。
-3. 在服务器复制 `deploy/.env.example` 为 `deploy/.env`，填写数据库连接串和加密密钥。
+3. 在服务器复制 `deploy/.env.example` 为 `deploy/.env`，填写数据库账号和加密密钥。
 4. 执行 `docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d`。
 5. 在 1Panel 创建网站、配置 HTTPS 证书，并将反向代理目标设置为 `127.0.0.1:3000`。
 
-HTTPS 证书只由 1Panel 管理，应用镜像不包含站点证书，也不负责 TLS 终止。数据库、缓存和对象存储由具体项目自行选择和接入，本模板不绑定相关服务。
+HTTPS 证书只由 1Panel 管理，应用镜像不包含站点证书，也不负责 TLS 终止。PostgreSQL 由同一个 Compose 文件启动。缓存和对象存储不预设。
 
 ## 构建检查
 
@@ -146,7 +163,7 @@ docker build -t ghcr.io/xiaolinbenben/fullstack-app-template:latest .
 
 ## CI/CD
 
-GitHub Actions 会在 Pull Request 和推送时执行 Go 测试、两套前端 typecheck/build 和 Docker 构建。前端依赖统一使用 pnpm 11.9.0 和 `pnpm-lock.yaml`。推送 `main` 时，工作流会将镜像推送到 GHCR，并通过 SSH 更新服务器上的 Compose 文件。
+GitHub Actions 会在 Pull Request 和推送时构建两套前端、Go 服务和 Docker 镜像，不运行测试。前端依赖统一使用 pnpm 11.9.0 和 `pnpm-lock.yaml`。推送 `main` 时，工作流会将镜像推送到 GHCR，并通过 SSH 更新服务器上的 Compose 文件。
 
 生产部署需要配置 GitHub Environment `production`：
 

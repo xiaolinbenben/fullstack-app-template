@@ -4,11 +4,23 @@ export type Envelope<T> = {
   data: T;
 };
 
-export async function fetchHealth(): Promise<Envelope<{ status: string }>> {
-  const response = await fetch("/healthz");
-  const payload = (await response.json()) as Envelope<{ status: string }>;
+async function request<T>(path: string, init?: RequestInit): Promise<Envelope<T>> {
+  const response = await fetch(path, init);
+  const payload = (await response.json()) as Envelope<T>;
   if (!response.ok || !payload.success) {
-    throw new Error(payload.message || "服务不可用");
+    throw new Error(payload.message || "请求失败");
   }
   return payload;
+}
+
+export function fetchHealth(): Promise<Envelope<{ status: string }>> {
+  return request("/healthz");
+}
+
+export function fetchWoodfish(): Promise<Envelope<{ count: number }>> {
+  return request("/api/woodfish");
+}
+
+export function knockWoodfish(): Promise<Envelope<{ count: number }>> {
+  return request("/api/woodfish", { method: "POST" });
 }

@@ -11,9 +11,10 @@ import (
 	"fullstack-app-template/server/internal/middleware"
 	"fullstack-app-template/server/internal/response"
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
-func New(_ config.Config, webFS fs.FS) *gin.Engine {
+func New(cfg config.Config, db *gorm.DB, webFS fs.FS) *gin.Engine {
 	engine := gin.New()
 	engine.Use(
 		gin.CustomRecovery(func(c *gin.Context, _ any) {
@@ -27,6 +28,8 @@ func New(_ config.Config, webFS fs.FS) *gin.Engine {
 	engine.GET("/healthz", func(c *gin.Context) {
 		response.OK(c, gin.H{"status": "ok"})
 	})
+	registerWoodfishRoutes(engine, db)
+	registerAdminRoutes(engine, cfg.EncryptionKey)
 	engine.NoMethod(func(c *gin.Context) {
 		response.Error(c, http.StatusMethodNotAllowed, "请求方法不支持")
 	})

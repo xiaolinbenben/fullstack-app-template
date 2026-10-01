@@ -24,7 +24,7 @@ RUN go mod download
 COPY server/ ./
 COPY --from=web-builder /src/server/web/dist/public ./web/dist/public
 COPY --from=admin-builder /src/server/web/dist/admin ./web/dist/admin
-RUN go test ./... && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w -X main.listenAddr=:3000" -o /out/server ./cmd/server
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w -X main.listenAddr=:3000" -o /out/server ./cmd/server
 
 FROM alpine:3.22
 

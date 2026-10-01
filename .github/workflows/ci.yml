@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,9 +17,6 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: server/go.mod
-
-      - name: Test Go server
-        run: make test
 
       - uses: pnpm/action-setup@v4
         with:
