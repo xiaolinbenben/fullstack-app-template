@@ -26,7 +26,7 @@
 ## 数据访问
 
 - 持久化只使用 GORM，数据库固定为 PostgreSQL。驱动固定为 `gorm.io/driver/postgres`。不引入 SQLite 或其他 ORM。
-- 应用从 `POSTGRES_USER`、`POSTGRES_PASSWORD`、`POSTGRES_DB` 拼出 `postgres://<user>:<password>@postgres:5432/<db>?sslmode=disable`。这三个值只允许字母、数字和连字符。容器内主机名固定为 Compose 服务名 `postgres`，端口固定为 `5432`，`sslmode=disable`。本机 `make server-dev` 和 `make test` 只把主机名改成 `127.0.0.1`。应用不读取 `POSTGRES_HOST_PORT`。连接池为最多 10 个连接。
+- 应用从 `POSTGRES_USER`、`POSTGRES_PASSWORD`、`POSTGRES_DB` 拼出 `postgres://<user>:<password>@postgres:5432/<db>?sslmode=disable`。这三个值只允许字母、数字和连字符。容器内主机名固定为 Compose 服务名 `postgres`，端口固定为 `5432`，`sslmode=disable`。数据库时区只在 Compose 里用 `timezone=Asia/Shanghai` 固定，不写入连接串或 `.env`。本机 `make server-dev` 和 `make test` 只把主机名改成 `127.0.0.1`。应用不读取 `POSTGRES_HOST_PORT`。连接池为最多 10 个连接。
 - `postgres:5432` 只在本 Compose 项目的网络里解析。其他应用即使也使用同名服务和容器端口 `5432`，也在各自的网络里，不与本项目冲突。
 - 构建继续使用 `CGO_ENABLED=0`。
 - 模型使用 GORM 默认表名。主键用自增 `uint`。包含 `CreatedAt` 和 `UpdatedAt`。只有业务需要软删除时才加 `gorm.DeletedAt`。

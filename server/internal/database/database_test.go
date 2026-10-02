@@ -35,6 +35,17 @@ func TestOpenRejectsInvalidURL(t *testing.T) {
 	}
 }
 
+func TestSessionTimezoneIsShanghai(t *testing.T) {
+	db := openTest(t)
+	var timezone string
+	if err := db.Raw("SHOW timezone").Scan(&timezone).Error; err != nil {
+		t.Fatal(err)
+	}
+	if timezone != "Asia/Shanghai" {
+		t.Fatalf("timezone = %q, want Asia/Shanghai", timezone)
+	}
+}
+
 func TestMigrateAndReadBack(t *testing.T) {
 	db := openTest(t)
 	if err := Migrate(db); err != nil {

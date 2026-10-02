@@ -2,6 +2,10 @@
 
 个人使用的全栈开发模板。
 
+在线演示：<https://fullstack-app-template.linzhiqing.dev/>
+
+管理端：<https://fullstack-app-template.linzhiqing.dev/admin/>（账号 `admin`，密码 `admin123`）
+
 ## 技术栈
 
 - 公共前端：React + Vite + TypeScript + shadcn/ui
@@ -118,7 +122,7 @@ ENCRYPTION_KEY=replace-with-a-long-random-key
 # POSTGRES_HOST_PORT=5432
 ```
 
-用户名和数据库名固定为 `app`。这三个值只使用字母、数字和连字符。服务启动时用它们拼出 PostgreSQL 连接串，主机名是 `postgres`，容器端口是 `5432`，`sslmode=disable`，再用 GORM 连接并执行 `AutoMigrate`。本地 Go 监听 `8000`，镜像监听容器端口 `3000`，这两个监听端口不通过环境变量改变。`APP_HOST_PORT` 和 `POSTGRES_HOST_PORT` 只决定映射到宿主机哪个回环端口。`ENCRYPTION_KEY` 仍只读入配置，加密逻辑由具体业务实现。
+用户名和数据库名固定为 `app`。这三个值只使用字母、数字和连字符。服务启动时用它们拼出 PostgreSQL 连接串，主机名是 `postgres`，容器端口是 `5432`，`sslmode=disable`，再用 GORM 连接并执行 `AutoMigrate`。数据库时区由 Compose 固定为 `Asia/Shanghai`。本地 Go 监听 `8000`，镜像监听容器端口 `3000`，这两个监听端口不通过环境变量改变。`APP_HOST_PORT` 和 `POSTGRES_HOST_PORT` 只决定映射到宿主机哪个回环端口。`ENCRYPTION_KEY` 仍只读入配置，加密逻辑由具体业务实现。
 
 ## Docker Compose
 
