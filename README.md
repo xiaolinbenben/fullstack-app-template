@@ -114,13 +114,15 @@ POSTGRES_USER=app
 POSTGRES_PASSWORD=replace-with-a-long-random-password
 POSTGRES_DB=app
 ENCRYPTION_KEY=replace-with-a-long-random-key
+# APP_HOST_PORT=3000
+# POSTGRES_HOST_PORT=5432
 ```
 
-用户名和数据库名固定为 `app`。这三个值只使用字母、数字和连字符。服务启动时用它们拼出 PostgreSQL 连接串，主机名是 `postgres`，端口是 `5432`，`sslmode=disable`，再用 GORM 连接并执行 `AutoMigrate`。端口和镜像地址固定在代码与 Compose 中，不通过环境变量覆盖。`ENCRYPTION_KEY` 仍只读入配置，加密逻辑由具体业务实现。
+用户名和数据库名固定为 `app`。这三个值只使用字母、数字和连字符。服务启动时用它们拼出 PostgreSQL 连接串，主机名是 `postgres`，容器端口是 `5432`，`sslmode=disable`，再用 GORM 连接并执行 `AutoMigrate`。本地 Go 监听 `8000`，镜像监听容器端口 `3000`，这两个监听端口不通过环境变量改变。`APP_HOST_PORT` 和 `POSTGRES_HOST_PORT` 只决定映射到宿主机哪个回环端口。`ENCRYPTION_KEY` 仍只读入配置，加密逻辑由具体业务实现。
 
 ## Docker Compose
 
-`deploy/docker-compose.yml` 同时启动 PostgreSQL 和应用。两个服务都用 `env_file` 读取 `deploy/.env`。PostgreSQL 只绑定在 `127.0.0.1:5432`。应用容器用 `POSTGRES_USER`、`POSTGRES_PASSWORD`、`POSTGRES_DB` 连接主机名 `postgres`。
+`deploy/docker-compose.yml` 同时启动 PostgreSQL 和应用。两个服务都用 `env_file` 读取 `deploy/.env`。端口只绑定宿主机回环地址：应用默认 `127.0.0.1:3000`，PostgreSQL 默认 `127.0.0.1:5432`。应用容器用 `POSTGRES_USER`、`POSTGRES_PASSWORD`、`POSTGRES_DB` 连接主机名 `postgres` 的容器端口 `5432`，不走宿主机映射。
 
 ```bash
 cp deploy/.env.example deploy/.env
@@ -140,7 +142,7 @@ docker compose \
   up -d
 ```
 
-打包镜像固定监听容器端口 `3000`，Compose 绑定到宿主机回环地址 `127.0.0.1:3000`，适合由 1Panel 反向代理。
+打包镜像固定监听容器端口 `3000`。Compose 默认把这个端口映射到宿主机 `127.0.0.1:3000`，适合由 1Panel 反向代理。服务器上 `3000` 或 `5432` 已被占用时，在 `.env` 里去掉对应行的注释并改成空闲端口。应用容器仍然连接 `postgres:5432`。
 
 ## 1Panel 部署
 
@@ -155,7 +157,7 @@ docker compose \
 1. 在服务器安装 Docker 和 1Panel。现在安装 Docker 会自带 Compose。
 2. 创建 `/opt/fullstack-app-template/deploy/`，把填好的 `.env` 放进去。
 3. 在 GitHub Environment `production` 配好下方三个 Secret 后，推送 `main`。工作流会写入 Compose、拉取镜像并在该目录执行 `docker compose up -d`。
-4. 在 1Panel 创建网站、配置 HTTPS 证书，并将反向代理目标设置为 `127.0.0.1:3000`。
+4. 在 1Panel 创建网站、配置 HTTPS 证书，并将反向代理目标设置为 `127.0.0.1:3000`。`.env` 里改过 `APP_HOST_PORT` 时，用改后的端口。
 
 HTTPS 证书只由 1Panel 管理，应用镜像不包含站点证书，也不负责 TLS 终止。PostgreSQL 由同一个 Compose 文件启动。缓存和对象存储不预设。之后查看容器或修改 `.env`，都在 `/opt/fullstack-app-template/deploy/` 里进行。
 

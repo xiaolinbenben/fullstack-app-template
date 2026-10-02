@@ -26,7 +26,8 @@
 ## 数据访问
 
 - 持久化只使用 GORM，数据库固定为 PostgreSQL。驱动固定为 `gorm.io/driver/postgres`。不引入 SQLite 或其他 ORM。
-- 应用从 `POSTGRES_USER`、`POSTGRES_PASSWORD`、`POSTGRES_DB` 拼出 `postgres://<user>:<password>@postgres:5432/<db>?sslmode=disable`。这三个值只允许字母、数字和连字符。主机名、端口和 `sslmode=disable` 写在代码里。连接池为最多 10 个连接。
+- 应用从 `POSTGRES_USER`、`POSTGRES_PASSWORD`、`POSTGRES_DB` 拼出 `postgres://<user>:<password>@postgres:5432/<db>?sslmode=disable`。这三个值只允许字母、数字和连字符。容器内主机名固定为 Compose 服务名 `postgres`，端口固定为 `5432`，`sslmode=disable`。本机 `make server-dev` 和 `make test` 只把主机名改成 `127.0.0.1`。应用不读取 `POSTGRES_HOST_PORT`。连接池为最多 10 个连接。
+- `postgres:5432` 只在本 Compose 项目的网络里解析。其他应用即使也使用同名服务和容器端口 `5432`，也在各自的网络里，不与本项目冲突。
 - 构建继续使用 `CGO_ENABLED=0`。
 - 模型使用 GORM 默认表名。主键用自增 `uint`。包含 `CreatedAt` 和 `UpdatedAt`。只有业务需要软删除时才加 `gorm.DeletedAt`。
 - 新增模型后，只在 `database.Migrate` 里注册并执行 `AutoMigrate`。不在请求路径里迁移。
@@ -45,15 +46,18 @@
 - 开发时前后端分开运行。部署时前端构建产物由 `go:embed` 打进同一个 Go 二进制，再封装成一个应用镜像。
 - 唯一环境变量模板是 `deploy/.env.example`。
 - `deploy/.env` 只用于本地或生产环境，禁止提交。
-- `.env.example` 保留 `POSTGRES_USER`、`POSTGRES_PASSWORD`、`POSTGRES_DB` 和 `ENCRYPTION_KEY`。用户名和数据库名固定为 `app`。密码只使用字母、数字和连字符。应用用这三个值连接主机名 `postgres`。
-- PostgreSQL 和应用容器都通过 `env_file` 读取 `deploy/.env`。不要在 Compose 里用 `environment` 插值这些变量。
-- 本地 `make server-dev` 和 `make test` 读取 `POSTGRES_USER`、`POSTGRES_PASSWORD`、`POSTGRES_DB`。这三个变量已经在环境里时直接使用，否则读 `deploy/.env`。传给 Go 进程时主机名用 `127.0.0.1`。`make server-dev` 另外只传入 `ENCRYPTION_KEY`。
-- 本地 Go 服务固定为 `8000`，打包镜像固定为 `3000`，不得通过环境变量覆盖。
+- `.env.example` 必须填写 `POSTGRES_USER`、`POSTGRES_PASSWORD`、`POSTGRES_DB` 和 `ENCRYPTION_KEY`。用户名和数据库名固定为 `app`。密码只使用字母、数字和连字符。不提供 `DATABASE_URL`。
+- `APP_HOST_PORT` 和 `POSTGRES_HOST_PORT` 在 `.env.example` 里默认注释。它们只改变宿主机回环地址上的端口映射，不改变容器内部端口。未设置时 Compose 使用应用 `3000`、PostgreSQL `5432`。服务器上端口被占用时，去掉对应行的注释并改成空闲端口。本机开发保持 `POSTGRES_HOST_PORT` 为注释，因为 `make server-dev` 连接的是 `127.0.0.1:5432`。
+- PostgreSQL 和应用容器都通过 `env_file` 读取 `deploy/.env`。不要在 Compose 的 `environment` 里插值数据库账号。
+- 本地 `make server-dev` 和 `make test` 读取 `POSTGRES_USER`、`POSTGRES_PASSWORD`、`POSTGRES_DB`。这三个变量已经在环境里时直接使用，否则读 `deploy/.env`。传给 Go 进程时主机名用 `127.0.0.1`，端口仍是 `5432`。`make server-dev` 另外只传入 `ENCRYPTION_KEY`。
+- 本地 Go 服务固定监听 `8000`，打包镜像固定监听容器端口 `3000`。这两个监听端口不通过环境变量覆盖。
 - Vite 本地开发必须通过 `server.proxy` 将 `/api` 和 `/healthz` 转发到 `http://127.0.0.1:8000`；不要用 CORS 配置替代开发代理。
 - HTTPS 证书由 1Panel 管理，不放入仓库或应用镜像。
-- 只使用 `deploy/docker-compose.yml`。它同时编排应用和 PostgreSQL。PostgreSQL 绑定 `127.0.0.1:5432`。应用容器用 `POSTGRES_USER`、`POSTGRES_PASSWORD`、`POSTGRES_DB` 连接主机名 `postgres`。
+- 只使用 `deploy/docker-compose.yml`。它同时编排应用和 PostgreSQL。宿主机端口只绑定 `127.0.0.1`。应用容器通过本项目网络连接服务名 `postgres` 的容器端口 `5432`。
+- 服务器目录是 `/opt/<仓库名>/deploy/`。运维只提前放置 `.env`。CI 每次部署写入 `docker-compose.yml`，不覆盖 `.env`。
+- 生产部署使用 GitHub Environment `production`。Secret 只有 `SERVER_HOST`、`SERVER_PASSWORD` 和 `GHCR_PAT`。登录用户默认为 `root`；要换成其他用户时设置 Variable `SERVER_USER`。`GHCR_PAT` 用于在服务器上登录 `ghcr.io` 并拉取镜像，用户名用仓库所有者。
 - 应用镜像里不包含数据库。缓存和对象存储不预设。
-- 1Panel 只负责域名、HTTPS 和反向代理。
+- 1Panel 只负责域名、HTTPS 和反向代理。反向代理目标是 `127.0.0.1` 加上应用的宿主机端口，默认 `3000`。
 
 ## 质量检查
 
