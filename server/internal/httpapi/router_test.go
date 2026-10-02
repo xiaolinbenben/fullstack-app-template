@@ -3,7 +3,6 @@ package httpapi
 import (
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 	"testing/fstest"
 
@@ -13,7 +12,11 @@ import (
 
 func testHandler(t *testing.T) http.Handler {
 	t.Helper()
-	db, cleanup, err := database.OpenIsolated(os.Getenv("DATABASE_URL"))
+	adminURL, err := config.DatabaseURL()
+	if err != nil {
+		t.Fatalf("读取数据库配置失败: %v", err)
+	}
+	db, cleanup, err := database.OpenIsolated(adminURL)
 	if err != nil {
 		t.Fatalf("打开测试库失败: %v", err)
 	}

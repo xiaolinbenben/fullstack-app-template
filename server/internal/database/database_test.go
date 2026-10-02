@@ -1,16 +1,20 @@
 package database
 
 import (
-	"os"
 	"testing"
 
+	"fullstack-app-template/server/internal/config"
 	"fullstack-app-template/server/internal/model"
 	"gorm.io/gorm"
 )
 
 func openTest(t *testing.T) *gorm.DB {
 	t.Helper()
-	db, cleanup, err := OpenIsolated(os.Getenv("DATABASE_URL"))
+	adminURL, err := config.DatabaseURL()
+	if err != nil {
+		t.Fatalf("读取数据库配置失败: %v", err)
+	}
+	db, cleanup, err := OpenIsolated(adminURL)
 	if err != nil {
 		t.Fatalf("打开测试库失败: %v", err)
 	}

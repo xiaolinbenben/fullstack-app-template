@@ -8,7 +8,7 @@
 - 管理端：React + Vite + Ant Design + `@ant-design/pro-components`
 - 后端：Go + Gin + GORM
 - 部署：单个 Go 应用镜像，由 1Panel 负责域名、HTTPS 证书和反向代理
-- CI/CD：GitHub Actions 构建并推送 GHCR 镜像，通过 SSH 更新 Compose
+- CI/CD：GitHub Actions 构建并推送 GHCR 镜像，再以默认用户 root 登录服务器，更新 `/opt/<仓库名>/deploy`
 
 开发时前后端分开运行，部署时用 `go:embed` 合成一个二进制和一个应用镜像。数据库使用 PostgreSQL，和 Go 应用写在同一个 `deploy/docker-compose.yml` 里。缓存和对象存储不预设。
 
@@ -46,7 +46,7 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d postgre
 make server-dev
 ```
 
-`make server-dev` 只把 `DATABASE_URL` 和 `ENCRYPTION_KEY` 传给 Go 进程。连接串里的主机名 `postgres` 会改成 `127.0.0.1`。
+`make server-dev` 把 `POSTGRES_USER`、`POSTGRES_PASSWORD`、`POSTGRES_DB` 和 `ENCRYPTION_KEY` 传给 Go 进程。连接主机名在本机改成 `127.0.0.1`。
 
 在另外两个终端启动前端：
 
@@ -113,15 +113,14 @@ cp deploy/.env.example deploy/.env
 POSTGRES_USER=app
 POSTGRES_PASSWORD=replace-with-a-long-random-password
 POSTGRES_DB=app
-DATABASE_URL=postgres://app:replace-with-a-long-random-password@postgres:5432/app?sslmode=disable
 ENCRYPTION_KEY=replace-with-a-long-random-key
 ```
 
-用户名和数据库名固定为 `app`。密码只使用字母、数字和连字符，并与 `DATABASE_URL` 中的密码相同。服务启动时用 GORM 连接 PostgreSQL，并执行 `AutoMigrate`。端口和镜像地址固定在代码与 Compose 中，不通过环境变量覆盖。`ENCRYPTION_KEY` 仍只读入配置，加密逻辑由具体业务实现。
+用户名和数据库名固定为 `app`。这三个值只使用字母、数字和连字符。服务启动时用它们拼出 PostgreSQL 连接串，主机名是 `postgres`，端口是 `5432`，`sslmode=disable`，再用 GORM 连接并执行 `AutoMigrate`。端口和镜像地址固定在代码与 Compose 中，不通过环境变量覆盖。`ENCRYPTION_KEY` 仍只读入配置，加密逻辑由具体业务实现。
 
 ## Docker Compose
 
-`deploy/docker-compose.yml` 同时启动 PostgreSQL 和应用。两个服务都用 `env_file` 读取 `deploy/.env`。PostgreSQL 只绑定在 `127.0.0.1:5432`。应用容器按 `DATABASE_URL` 连接主机名 `postgres`。
+`deploy/docker-compose.yml` 同时启动 PostgreSQL 和应用。两个服务都用 `env_file` 读取 `deploy/.env`。PostgreSQL 只绑定在 `127.0.0.1:5432`。应用容器用 `POSTGRES_USER`、`POSTGRES_PASSWORD`、`POSTGRES_DB` 连接主机名 `postgres`。
 
 ```bash
 cp deploy/.env.example deploy/.env
@@ -145,13 +144,20 @@ docker compose \
 
 ## 1Panel 部署
 
-1. 在服务器安装 Docker、Compose 插件和 1Panel。
-2. 将 `deploy/docker-compose.yml` 和 `deploy/.env.example` 上传到 `/opt/<app-name>/deploy/`。
-3. 在服务器复制 `deploy/.env.example` 为 `deploy/.env`，填写数据库账号和加密密钥。
-4. 执行 `docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d`。
-5. 在 1Panel 创建网站、配置 HTTPS 证书，并将反向代理目标设置为 `127.0.0.1:3000`。
+服务器目录为 `/opt/<仓库名>/deploy/`。本仓库对应：
 
-HTTPS 证书只由 1Panel 管理，应用镜像不包含站点证书，也不负责 TLS 终止。PostgreSQL 由同一个 Compose 文件启动。缓存和对象存储不预设。
+```text
+/opt/fullstack-app-template/deploy/
+```
+
+运维在这个目录里工作，并且只提前放置 `.env`。内容按仓库里的 `deploy/.env.example` 填写数据库账号和 `ENCRYPTION_KEY`。`docker-compose.yml` 由 CI 在每次部署时写入该目录并覆盖同名文件。`.env` 保持运维填写的内容。
+
+1. 在服务器安装 Docker 和 1Panel。现在安装 Docker 会自带 Compose。
+2. 创建 `/opt/fullstack-app-template/deploy/`，把填好的 `.env` 放进去。
+3. 在 GitHub Environment `production` 配好下方三个 Secret 后，推送 `main`。工作流会写入 Compose、拉取镜像并在该目录执行 `docker compose up -d`。
+4. 在 1Panel 创建网站、配置 HTTPS 证书，并将反向代理目标设置为 `127.0.0.1:3000`。
+
+HTTPS 证书只由 1Panel 管理，应用镜像不包含站点证书，也不负责 TLS 终止。PostgreSQL 由同一个 Compose 文件启动。缓存和对象存储不预设。之后查看容器或修改 `.env`，都在 `/opt/fullstack-app-template/deploy/` 里进行。
 
 ## 构建检查
 
@@ -163,12 +169,16 @@ docker build -t ghcr.io/xiaolinbenben/fullstack-app-template:latest .
 
 ## CI/CD
 
-GitHub Actions 会在 Pull Request 和推送时构建两套前端、Go 服务和 Docker 镜像，不运行测试。前端依赖统一使用 pnpm 11.9.0 和 `pnpm-lock.yaml`。推送 `main` 时，工作流会将镜像推送到 GHCR，并通过 SSH 更新服务器上的 Compose 文件。
+GitHub Actions 会在 Pull Request 和推送时构建两套前端、Go 服务和 Docker 镜像，不运行测试。前端依赖统一使用 pnpm 11.9.0 和 `pnpm-lock.yaml`。推送 `main` 时，工作流把镜像推送到 GHCR，再以默认用户 `root` 登录服务器，把仓库里的 `deploy/docker-compose.yml` 写到 `/opt/<仓库名>/deploy/docker-compose.yml`，用下面的 PAT 登录 `ghcr.io` 后执行 `docker compose pull` 和 `docker compose up -d`。
 
-生产部署需要配置 GitHub Environment `production`：
+登录用户默认为 `root`，不放入部署 Secret。要换成其他用户时，在 GitHub Environment `production` 设置 Variable `SERVER_USER`。
 
-- `SERVER_HOST`
-- `SERVER_USER`
-- `SERVER_SSH_KEY`
+生产部署使用 GitHub Environment `production`。部署 Secret 固定为这三个：
 
-服务器上的 `deploy/.env` 由服务器管理员维护，CI 不覆盖真实配置。
+| Secret | 内容 |
+| --- | --- |
+| `SERVER_HOST` | 服务器 IP |
+| `SERVER_PASSWORD` | root 密码 |
+| `GHCR_PAT` | 可拉取 GHCR 镜像的 GitHub Personal Access Token |
+
+`GHCR_PAT` 需要 `read:packages`。镜像为私有时，经典 PAT 还需要 `repo`。工作流用仓库所有者的用户名登录 `ghcr.io`，这个 PAT 属于仓库所有者。服务器上的 `.env` 由运维在 `/opt/<仓库名>/deploy/` 维护，CI 只写入 `docker-compose.yml`。

@@ -20,11 +20,11 @@ import (
 func Open(databaseURL string) (*gorm.DB, error) {
 	databaseURL = strings.TrimSpace(databaseURL)
 	if databaseURL == "" {
-		return nil, errors.New("未设置 DATABASE_URL")
+		return nil, errors.New("未设置数据库连接串")
 	}
 	lower := strings.ToLower(databaseURL)
 	if !strings.HasPrefix(lower, "postgres://") && !strings.HasPrefix(lower, "postgresql://") {
-		return nil, errors.New("DATABASE_URL 必须是 PostgreSQL 连接串")
+		return nil, errors.New("数据库连接串必须是 PostgreSQL")
 	}
 
 	db, err := gorm.Open(postgres.New(postgres.Config{
@@ -81,7 +81,7 @@ func Close(db *gorm.DB) error {
 func OpenIsolated(adminURL string) (*gorm.DB, func() error, error) {
 	adminURL = strings.TrimSpace(adminURL)
 	if adminURL == "" {
-		return nil, nil, errors.New("未设置 DATABASE_URL")
+		return nil, nil, errors.New("未设置数据库连接串")
 	}
 	admin, err := Open(adminURL)
 	if err != nil {

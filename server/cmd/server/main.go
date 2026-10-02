@@ -21,7 +21,10 @@ import (
 var listenAddr = ":8000"
 
 func main() {
-	cfg := config.Load(listenAddr)
+	cfg, err := config.Load(listenAddr)
+	if err != nil {
+		log.Fatalf("读取配置失败: %v", err)
+	}
 
 	webFS, err := fs.Sub(webassets.Assets, "dist")
 	if err != nil {

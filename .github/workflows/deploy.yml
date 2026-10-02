@@ -51,26 +51,47 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     env:
-      DEPLOY_PATH: /opt/fullstack-app-template
-      SERVER_USER: ${{ secrets.SERVER_USER || 'root' }}
-      SERVER_HOST: ${{ secrets.SERVER_HOST }}
+      DEPLOY_PATH: /opt/${{ github.event.repository.name }}/deploy
+      GHCR_USER: ${{ github.repository_owner }}
+      SERVER_USER: ${{ vars.SERVER_USER || 'root' }}
     steps:
       - uses: actions/checkout@v4
 
-      - uses: webfactory/ssh-agent@v0.9.1
-        with:
-          ssh-private-key: ${{ secrets.SERVER_SSH_KEY }}
+      - name: Install sshpass
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
 
-      - name: Upload deployment files
+      - name: Upload Compose and restart
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_PASSWORD: ${{ secrets.SERVER_PASSWORD }}
+          GHCR_PAT: ${{ secrets.GHCR_PAT }}
         run: |
-          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-            "$SERVER_USER@$SERVER_HOST" "mkdir -p '$DEPLOY_PATH/deploy'"
-          scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-            deploy/docker-compose.yml deploy/.env.example \
-            "$SERVER_USER@$SERVER_HOST:$DEPLOY_PATH/deploy/"
+          set -euo pipefail
 
-      - name: Pull and restart application
-        run: |
-          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-            "$SERVER_USER@$SERVER_HOST" \
-            "cd '$DEPLOY_PATH' && test -f deploy/.env && docker compose --env-file deploy/.env -f deploy/docker-compose.yml pull && docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --remove-orphans && docker compose --env-file deploy/.env -f deploy/docker-compose.yml ps"
+          if [ -z "${SERVER_HOST}" ] || [ -z "${SERVER_PASSWORD}" ] || [ -z "${GHCR_PAT}" ]; then
+            echo "production 环境缺少 SERVER_HOST、SERVER_PASSWORD 或 GHCR_PAT" >&2
+            exit 1
+          fi
+
+          export SSHPASS="${SERVER_PASSWORD}"
+          SSH_OPTS=(
+            -o StrictHostKeyChecking=no
+            -o UserKnownHostsFile=/dev/null
+            -o PreferredAuthentications=password
+            -o PubkeyAuthentication=no
+            -o NumberOfPasswordPrompts=1
+            -o ConnectTimeout=20
+          )
+
+          sshpass -e ssh "${SSH_OPTS[@]}" "${SERVER_USER}@${SERVER_HOST}" \
+            "mkdir -p '${DEPLOY_PATH}' && if [ ! -f '${DEPLOY_PATH}/.env' ]; then echo '缺少 ${DEPLOY_PATH}/.env，请运维先在该目录放好环境文件' >&2; exit 1; fi"
+
+          sshpass -e scp "${SSH_OPTS[@]}" \
+            deploy/docker-compose.yml \
+            "${SERVER_USER}@${SERVER_HOST}:${DEPLOY_PATH}/docker-compose.yml"
+
+          printf '%s\n' "${GHCR_PAT}" | sshpass -e ssh "${SSH_OPTS[@]}" "${SERVER_USER}@${SERVER_HOST}" \
+            "docker login ghcr.io -u '${GHCR_USER}' --password-stdin"
+
+          sshpass -e ssh "${SSH_OPTS[@]}" "${SERVER_USER}@${SERVER_HOST}" \
+            "cd '${DEPLOY_PATH}' && docker compose --env-file .env -f docker-compose.yml pull && docker compose --env-file .env -f docker-compose.yml up -d --remove-orphans && docker compose --env-file .env -f docker-compose.yml ps"

@@ -26,7 +26,7 @@
 ## 数据访问
 
 - 持久化只使用 GORM，数据库固定为 PostgreSQL。驱动固定为 `gorm.io/driver/postgres`。不引入 SQLite 或其他 ORM。
-- `DATABASE_URL` 使用 `postgres://` 或 `postgresql://`。连接池为最多 10 个连接。
+- 应用从 `POSTGRES_USER`、`POSTGRES_PASSWORD`、`POSTGRES_DB` 拼出 `postgres://<user>:<password>@postgres:5432/<db>?sslmode=disable`。这三个值只允许字母、数字和连字符。主机名、端口和 `sslmode=disable` 写在代码里。连接池为最多 10 个连接。
 - 构建继续使用 `CGO_ENABLED=0`。
 - 模型使用 GORM 默认表名。主键用自增 `uint`。包含 `CreatedAt` 和 `UpdatedAt`。只有业务需要软删除时才加 `gorm.DeletedAt`。
 - 新增模型后，只在 `database.Migrate` 里注册并执行 `AutoMigrate`。不在请求路径里迁移。
@@ -36,7 +36,7 @@
 - 字符串长度按字符数在 Handler 校验，并与模型 `size` 保持一致。
 - 不要把 `0` 值主键传给 `First`。GORM 会忽略零值条件。
 - 未找到记录用 `errors.Is(err, gorm.ErrRecordNotFound)` 转成统一响应。数据库错误只写日志，不返回给客户端。
-- 日志里不打印 `DATABASE_URL`。
+- 日志里不打印数据库连接串和密码。
 - 同一次请求里的多条写入放在 `Transaction` 里。更新用 `Updates` 并指定字段，不用 `Save` 回写整行。
 - 需要把用户输入放进 SQL 时使用占位参数，不拼接 SQL。
 
@@ -45,13 +45,13 @@
 - 开发时前后端分开运行。部署时前端构建产物由 `go:embed` 打进同一个 Go 二进制，再封装成一个应用镜像。
 - 唯一环境变量模板是 `deploy/.env.example`。
 - `deploy/.env` 只用于本地或生产环境，禁止提交。
-- `.env.example` 保留 `POSTGRES_USER`、`POSTGRES_PASSWORD`、`POSTGRES_DB`、`DATABASE_URL` 和 `ENCRYPTION_KEY`。用户名和数据库名固定为 `app`。密码只使用字母、数字和连字符，并与 `DATABASE_URL` 中的密码相同。`DATABASE_URL` 的主机名写 `postgres`。
+- `.env.example` 保留 `POSTGRES_USER`、`POSTGRES_PASSWORD`、`POSTGRES_DB` 和 `ENCRYPTION_KEY`。用户名和数据库名固定为 `app`。密码只使用字母、数字和连字符。应用用这三个值连接主机名 `postgres`。
 - PostgreSQL 和应用容器都通过 `env_file` 读取 `deploy/.env`。不要在 Compose 里用 `environment` 插值这些变量。
-- 本地 `make server-dev` 和 `make test` 只把 `DATABASE_URL` 传给对应命令，并把主机名 `postgres` 换成 `127.0.0.1`。已有该变量时直接使用。`make server-dev` 另外只传入 `ENCRYPTION_KEY`。
+- 本地 `make server-dev` 和 `make test` 读取 `POSTGRES_USER`、`POSTGRES_PASSWORD`、`POSTGRES_DB`。这三个变量已经在环境里时直接使用，否则读 `deploy/.env`。传给 Go 进程时主机名用 `127.0.0.1`。`make server-dev` 另外只传入 `ENCRYPTION_KEY`。
 - 本地 Go 服务固定为 `8000`，打包镜像固定为 `3000`，不得通过环境变量覆盖。
 - Vite 本地开发必须通过 `server.proxy` 将 `/api` 和 `/healthz` 转发到 `http://127.0.0.1:8000`；不要用 CORS 配置替代开发代理。
 - HTTPS 证书由 1Panel 管理，不放入仓库或应用镜像。
-- 只使用 `deploy/docker-compose.yml`。它同时编排应用和 PostgreSQL。PostgreSQL 绑定 `127.0.0.1:5432`。应用容器使用 `DATABASE_URL` 里的主机名 `postgres`。
+- 只使用 `deploy/docker-compose.yml`。它同时编排应用和 PostgreSQL。PostgreSQL 绑定 `127.0.0.1:5432`。应用容器用 `POSTGRES_USER`、`POSTGRES_PASSWORD`、`POSTGRES_DB` 连接主机名 `postgres`。
 - 应用镜像里不包含数据库。缓存和对象存储不预设。
 - 1Panel 只负责域名、HTTPS 和反向代理。
 
